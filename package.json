@@ -1,0 +1,14 @@
+{
+  "name": "discord-ticket-bot",
+  "version": "1.0.0",
+  "description": "Discord Ticket Bot with transcript, auto-close, and advanced features",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.16.3",
+    "fs-extra": "^11.1.1"
+  }
+}
