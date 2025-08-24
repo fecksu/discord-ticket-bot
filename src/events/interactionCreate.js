@@ -1,63 +1,158 @@
-import { ChannelType, PermissionFlagsBits, ActionRowBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, EmbedBuilder } from "discord.js";
+import {
+  ChannelType,
+  EmbedBuilder,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
+  ActionRowBuilder,
+  PermissionsBitField
+} from "discord.js";
 import config from "../config.json" assert { type: "json" };
-import { saveTranscript } from "../utils/transcript.js";
+import { ticketEmbed } from "../utils/embeds.js";
+
+const activeTickets = new Map();
 
 export const name = "interactionCreate";
+export const once = false;
 
 export async function execute(interaction, client) {
-  if (interaction.isChatInputCommand()) {
-    const cmd = client.commands.get(interaction.commandName);
-    if (cmd) await cmd.execute(interaction, client);
-  }
-
+  // ==========================
+  // 1. HANDLE SELECT MENU
+  // ==========================
   if (interaction.isStringSelectMenu() && interaction.customId === "ticket-category") {
     const category = interaction.values[0];
+    if (activeTickets.has(interaction.user.id)) {
+      return interaction.reply({ content: "❌ Kamu masih punya tiket aktif!", ephemeral: true });
+    }
 
-    const modal = new ModalBuilder()
-      .setCustomId(`modal-${category}`)
-      .setTitle("Formulir Tiket");
+    let modal;
+    if (category === "reportPlayer") {
+      modal = new ModalBuilder()
+        .setCustomId("modal-report-player")
+        .setTitle("Report Player")
+        .addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId("ucp_pelapor").setLabel("UCP Pelapor").setStyle(TextInputStyle.Short).setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId("ucp_terlapor").setLabel("UCP Terlapor").setStyle(TextInputStyle.Short).setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId("jenis_pelanggaran").setLabel("Jenis Pelanggaran").setStyle(TextInputStyle.Short).setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId("waktu").setLabel("Waktu Kejadian").setStyle(TextInputStyle.Short).setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId("kronologis").setLabel("Kronologis").setStyle(TextInputStyle.Paragraph).setRequired(true)
+          )
+        );
+    }
 
-    const input = new TextInputBuilder()
-      .setCustomId("alasan")
-      .setLabel("Jelaskan permasalahan Anda")
-      .setStyle(TextInputStyle.Paragraph)
-      .setRequired(true);
+    if (category === "reportStaff") {
+      modal = new ModalBuilder()
+        .setCustomId("modal-report-staff")
+        .setTitle("Report Staff")
+        .addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId("ucp_pelapor").setLabel("UCP Pelapor").setStyle(TextInputStyle.Short).setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId("staff_terlapor").setLabel("Staff Terlapor").setStyle(TextInputStyle.Short).setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId("jenis_pelanggaran").setLabel("Jenis Pelanggaran").setStyle(TextInputStyle.Short).setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId("waktu").setLabel("Waktu Kejadian").setStyle(TextInputStyle.Short).setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId("kronologis").setLabel("Kronologis").setStyle(TextInputStyle.Paragraph).setRequired(true)
+          )
+        );
+    }
 
-    const row = new ActionRowBuilder().addComponents(input);
-    modal.addComponents(row);
+    if (category === "requestDonasi") {
+      modal = new ModalBuilder()
+        .setCustomId("modal-donasi")
+        .setTitle("Request Donasi")
+        .addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId("ucp").setLabel("Nama UCP").setStyle(TextInputStyle.Short).setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId("karakter").setLabel("Nama Karakter").setStyle(TextInputStyle.Short).setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId("jenis_donasi").setLabel("Jenis Donasi").setStyle(TextInputStyle.Short).setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId("pembayaran").setLabel("Pembayaran Via").setStyle(TextInputStyle.Short).setRequired(true)
+          )
+        );
+    }
 
-    await interaction.showModal(modal);
+    return interaction.showModal(modal);
   }
 
+  // ==========================
+  // 2. HANDLE MODAL SUBMIT
+  // ==========================
   if (interaction.isModalSubmit()) {
-    const category = interaction.customId.split("-")[1];
-    const reason = interaction.fields.getTextInputValue("alasan");
+    let kategori, responses = {};
 
-    const guild = interaction.guild;
-    const categoryId = config.categories[category] || config.manageCategoryId;
+    if (interaction.customId === "modal-report-player") {
+      kategori = "Report Player";
+      responses = {
+        "UCP Pelapor": interaction.fields.getTextInputValue("ucp_pelapor"),
+        "UCP Terlapor": interaction.fields.getTextInputValue("ucp_terlapor"),
+        "Jenis Pelanggaran": interaction.fields.getTextInputValue("jenis_pelanggaran"),
+        "Waktu Kejadian": interaction.fields.getTextInputValue("waktu"),
+        "Kronologis": interaction.fields.getTextInputValue("kronologis")
+      };
+    }
 
-    // cek tiket aktif
-    const existing = guild.channels.cache.find(ch => ch.topic === interaction.user.id);
-    if (existing) return interaction.reply({ content: "❌ Anda sudah memiliki tiket aktif.", ephemeral: true });
+    if (interaction.customId === "modal-report-staff") {
+      kategori = "Report Staff";
+      responses = {
+        "UCP Pelapor": interaction.fields.getTextInputValue("ucp_pelapor"),
+        "Staff Terlapor": interaction.fields.getTextInputValue("staff_terlapor"),
+        "Jenis Pelanggaran": interaction.fields.getTextInputValue("jenis_pelanggaran"),
+        "Waktu Kejadian": interaction.fields.getTextInputValue("waktu"),
+        "Kronologis": interaction.fields.getTextInputValue("kronologis")
+      };
+    }
+
+    if (interaction.customId === "modal-donasi") {
+      kategori = "Request Donasi";
+      responses = {
+        "Nama UCP": interaction.fields.getTextInputValue("ucp"),
+        "Nama Karakter": interaction.fields.getTextInputValue("karakter"),
+        "Jenis Donasi": interaction.fields.getTextInputValue("jenis_donasi"),
+        "Pembayaran Via": interaction.fields.getTextInputValue("pembayaran")
+      };
+    }
+
+    // Buat channel tiket
+    const guild = client.guilds.cache.get(config.guildId);
+    const categoryId = config.categories[kategori.replace(" ", "").toLowerCase()] || config.manageCategoryId;
 
     const channel = await guild.channels.create({
       name: `ticket-${interaction.user.username}`,
       type: ChannelType.GuildText,
       parent: categoryId,
-      topic: interaction.user.id,
       permissionOverwrites: [
-        { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
-        { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] },
-        { id: config.staffRoleId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] }
+        { id: guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
+        { id: interaction.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] },
+        { id: config.staffRoleId, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] }
       ]
     });
 
-    const embed = new EmbedBuilder()
-      .setTitle(`🎫 Tiket ${interaction.user.username}`)
-      .setDescription(`Kategori: **${category}**\nAlasan: ${reason}`)
-      .setColor("Green");
+    activeTickets.set(interaction.user.id, channel.id);
 
-    await channel.send({ content: `<@&${config.staffRoleId}> tiket baru dibuat oleh ${interaction.user}`, embeds: [embed] });
-    await interaction.reply({ content: `✅ Tiket berhasil dibuat: ${channel}`, ephemeral: true });
+    const embed = ticketEmbed(interaction.user, kategori, responses, guild);
+    await channel.send({ content: `<@&${config.staffRoleId}> | <@${interaction.user.id}>`, embeds: [embed] });
+
+    await interaction.reply({ content: `✅ Tiket kamu sudah dibuat: ${channel}`, ephemeral: true });
   }
 }
